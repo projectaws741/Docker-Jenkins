@@ -1,0 +1,64 @@
+//reading credintials from aws secret manager so create docker secrtes in aws sec manager and replace secret id with your secret name.
+pipeline
+{
+    agent any
+    environment
+    {
+        DOCKER_REGISTRY_NAME = 'projectaws/app'
+        DOCKER_TAG = 'latest'
+        DOCKERFILE_PATH = 'Dockerfile'
+    }
+    stages
+    {
+        stage('ContinuousDownload')
+        {
+            steps
+            {
+              git branch: 'main', url: 'https://github.com/projectaws741/Docker-Jenkins.git'  
+            }
+        }
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build the Docker image
+                    sh """
+                        docker build -t ${DOCKER_REGISTRY_NAME}:${DOCKER_TAG} -f ${DOCKERFILE_PATH} .
+                    """
+                }
+            }
+        }
+        stage('Fetch Secrets from AWS') 
+        {
+            steps 
+                {
+                script 
+                    {
+                    // Replace 'your-secret-id' with the actual secret ID from AWS Secrets Manager
+                    def secretId = 'Dockercreds'
+
+                    // Fetch the secret from AWS Secrets Manager
+                    def secretJson = sh(script: "aws secretsmanager get-secret-value --secret-id ${secretId} --query SecretString --output text", returnStdout: true).trim()
+
+                    // Parse the secret JSON
+                    def secret = readJSON(text: secretJson)
+
+                    // Set environment variables from secret
+                    env.DOCKER_USERNAME = secret.Docker_Username // Ensure keys match your secret structure
+                    env.DOCKER_PASSWORD = secret.Docker_password  // Ensure keys match your secret structure
+                }
+            }
+        }
+        stage('DockerPush')
+        {
+            steps
+            {
+                script
+                {
+                    sh 'docker login -u ${DOCKER_USERNAME} -p ${DOCKER_PASSWORD}'
+                    echo 'Docker login sucess'
+                    sh 'docker push ${DOCKER_REGISTRY_NAME}:${DOCKER_TAG}'
+                }
+            }
+        }
+    }
+}
